@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+# python virtual env
+.venv/
+# environment variables
+.env
+# Piper voice model
+models/
+# audio files
+*.wav
