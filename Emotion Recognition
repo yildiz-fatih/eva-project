@@ -1,0 +1,217 @@
+import sounddevice as sd
+import soundfile as sf
+import numpy as np
+from transformers import pipeline
+import time
+from groq import Groq
+from dotenv import load_dotenv
+import os
+
+# Guys you need to create a .env(the name should be exactly .env) file and paste your groq key there in "GROQ_API_KEY= your key" format
+load_dotenv()
+
+class EvaPipeline:
+    def __init__(self):
+        print("Loading EVA Multi-Modal Pipeline...")
+        
+        # Initialize Groq client with environment variable
+        print("Loading Whisper...")
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise ValueError("GROQ_API_KEY not found in .env file")
+            
+        self.groq_client = Groq(api_key=api_key)
+        
+        # Load voice emotion classifier
+        print("Loading voice emotion model...")
+        self.voice_classifier = pipeline(
+            "audio-classification", 
+            model="superb/wav2vec2-base-superb-er"
+        )
+        
+        # Load text emotion classifier
+        print("Loading text emotion model...")
+        self.text_classifier = pipeline(
+            "text-classification",
+            model="j-hartmann/emotion-english-distilroberta-base",
+            top_k=None
+        )
+        
+        print("EVA Pipeline Ready!")
+    
+    def speech_to_text(self, audio_path):
+        """Convert speech to text using Groq Whisper Turbo API"""
+        try:
+            with open(audio_path, "rb") as audio_file:
+                transcription = self.groq_client.audio.transcriptions.create(
+                    file=audio_file,
+                    model="whisper-large-v3-turbo", #whisper turbo
+                    language="en",
+                    response_format="json"
+                )
+                return transcription.text.strip()
+        except Exception as e:
+            print(f"Whisper error: {e}")
+            return ""
+    
+    def analyze_voice_emotion(self, audio_path):
+        """Analyze emotion from voice tone only"""
+        try:
+            results = self.voice_classifier(audio_path)
+            
+            # DECREASE HAPPINESS PROBABILITY(due to voice analyzer's happy bias)
+            for emotion in results:
+                if emotion['label'] == 'happy':
+                    # Reduce happiness probability by 20%
+                    emotion['score'] = max(0.0, emotion['score'] - 0.20)
+                    print(f"HAPPINESS REDUCTION: -20% probability")
+                    break
+            
+            # Get the emotion with highest confidence after adjustment
+            voice_emotion = results[0]['label']
+            voice_confidence = results[0]['score']
+            return voice_emotion, voice_confidence
+        except Exception as e:
+            print(f"Voice analysis error: {e}")
+            return "neutral", 0.5
+    
+    def analyze_text_emotion(self, text):
+        """Analyze emotion from text content only"""
+        if not text.strip():
+            return "neutral", 0.0
+        
+        try:
+            results = self.text_classifier(text)[0]
+            
+            # SIMPLE ANGER PROBABILITY BOOST
+            for emotion in results:
+                if emotion['label'] == 'anger':
+                    # Directly increase anger probability by 25%
+                    emotion['score'] = min(1.0, emotion['score'] + 0.25)
+                    print(f"ANGER BOOST: +25% probability")
+                    break
+            
+            # Get the emotion with highest confidence
+            primary_emotion = max(results, key=lambda x: x['score'])
+            return primary_emotion['label'], primary_emotion['score']
+        except Exception as e:
+            print(f"Text analysis error: {e}")
+            return "neutral", 0.5
+    
+    def combine_emotions(self, voice_emotion, voice_conf, text_emotion, text_conf):
+        """Intelligently combine voice tone and text content emotions"""
+        
+        # Emotion mapping
+        emotion_map = {
+            'angry': 'angry', 
+            'sad': 'sad', 
+            'happy': 'happy', 
+            'neutral': 'neutral', 
+            'fearful': 'fearful',
+            'anger': 'anger',           
+            'disgust': 'disgust',       
+            'fear': 'fear',
+            'joy': 'joy',
+            'sadness': 'sadness',
+            'surprise': 'surprise',
+            'neutral': 'neutral'
+        }
+        
+        voice_norm = emotion_map.get(voice_emotion, voice_emotion)
+        text_norm = emotion_map.get(text_emotion, text_emotion)
+        
+        # Define similar emotion groups
+        similar_emotions = {
+            'angry': ['anger'],
+            'anger': ['angry'],
+            'sad': ['sadness'],
+            'sadness': ['sad'],
+            'happy': ['joy'],
+            'joy': ['happy'],
+            'fearful': ['fear'],
+            'fear': ['fearful'],
+            'surprise': ['surprise'],
+            'neutral': ['neutral'],
+            'disgust': ['disgust']
+        }
+        
+        # Check if emotions are similar
+        emotions_agree = (voice_norm == text_norm or 
+                         voice_norm in similar_emotions.get(text_norm, []) or 
+                         text_norm in similar_emotions.get(voice_norm, []))
+        
+        if emotions_agree:
+            final_emotion = text_norm
+            final_confidence = (voice_conf + text_conf) / 2
+            return final_emotion, final_confidence
+        
+        # WEIGHTS: 40-60 (trust the text)
+        voice_weight = 0.4
+        text_weight = 0.6
+        
+        voice_score = voice_conf * voice_weight
+        text_score = text_conf * text_weight
+        
+        if text_score >= voice_score:
+            return text_norm, text_score
+        else:
+            return voice_norm, voice_score
+    
+    def process_interaction(self, duration=5):
+        """Main processing function"""
+        # Record audio
+        fs = 16000
+        print("Recording...")
+        recording = sd.rec(int(duration * fs), samplerate=fs, channels=1)
+        sd.wait()
+        
+        # Save temporary file
+        temp_file = "temp_audio.wav"
+        sf.write(temp_file, recording, fs)
+        
+        # Step 1: Speech-to-Text with Whisper
+        text = self.speech_to_text(temp_file)
+        print(f"Transcribed: '{text}'")
+        
+        # Step 2: Analyze voice tone emotion
+        voice_emotion, voice_conf = self.analyze_voice_emotion(temp_file)
+        print(f"Voice emotion: {voice_emotion} ({voice_conf:.1%})")
+        
+        # Step 3: Analyze text content emotion
+        text_emotion, text_conf = self.analyze_text_emotion(text)
+        print(f"Text emotion: {text_emotion} ({text_conf:.1%})")
+        
+        # Step 4: Combine results
+        final_emotion, final_conf = self.combine_emotions(
+            voice_emotion, voice_conf, text_emotion, text_conf
+        )
+        
+        return {
+            'text': text,
+            'voice_emotion': voice_emotion,
+            'voice_confidence': voice_conf,
+            'text_emotion': text_emotion, 
+            'text_confidence': text_conf,
+            'final_emotion': final_emotion,
+            'final_confidence': final_conf
+        }
+
+# Initialize EVA
+print("Starting EVA Multi-Modal Emotion Detection")
+eva = EvaPipeline()
+
+try:
+    while True:
+        print("\n" + "="*60)
+        result = eva.process_interaction(duration=5)
+        
+        print(f"FINAL ANALYSIS:")
+        print(f"   Text: '{result['text']}'")
+        print(f"   Voice detected: {result['voice_emotion']} ({result['voice_confidence']:.1%})")
+        print(f"   Text detected: {result['text_emotion']} ({result['text_confidence']:.1%})")
+        print(f"   COMBINED: {result['final_emotion']} ({result['final_confidence']:.1%})")
+        
+        time.sleep(2)
+        
+except KeyboardInterrupt:
+    print("EVA Stopped")
