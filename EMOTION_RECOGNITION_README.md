@@ -1,55 +1,34 @@
-## Real-time Emotion Detection System
+Step 1: Get the Code
+bash
+git clone https://github.com/yildiz-fatih/eva-project.git
+cd eva-project
+Step 2: Install Python Dependencies
+bash
+pip install groq python-dotenv sounddevice soundfile transformers torch numpy
+Step 3: Set up API Key
+Create a file called .env in the project folder with this content:
 
-This project includes a real-time multi-modal emotion detection system that analyzes both voice tone and text content.
+text
+GROQ_API_KEY=your_actual_groq_api_key_here
+Get API key from: https://console.groq.com
 
-### Features
-
-- Real-time audio recording and processing
-- Voice emotion analysis using wav2vec2 model
-- Text emotion analysis using transformer models
-- Multi-modal fusion combining voice and text analysis
-
-### Installation (For PC Users)
-
-1. Install emotion detection dependencies:
-   ```bash
-   pip install sounddevice soundfile transformers
-Run the emotion detection system:
-
+Step 4: Run the Code
 bash
 python realtime_emotion.py
-Usage
-The system will record 5-second audio clips continuously and provide real-time emotion analysis.
+Step 5: Use It
+Talk into your microphone
 
-To stop the application: Press Ctrl+C
+The system records 5-second clips automatically
 
-How It Works
-Audio Recording: Captures 5-second audio clips
+See real-time emotion analysis in the console
 
-Speech-to-Text: Uses Groq's Whisper Turbo for fast transcription
-
-Voice Emotion: Analyzes pitch, tone, and speech characteristics
-
-Text Emotion: Analyzes word content and sentiment
-
-Multi-modal Fusion: Combines voice and text analysis with weighted scoring
-
-Raspberry Pi Audio Setup
-For Raspberry Pi users, additional audio configuration may be required:
-Model Download Issues: First run will download models, ensure stable internet connection
-
-arecord --format=S16_LE --duration=5 --rate=16000 --file-type=raw test.raw
-No Audio Input: Check microphone permissions and ensure microphone is not muted
+Press Ctrl+C to stop
 
 Troubleshooting
-Voice Emotions: angry, sad, happy, neutral, fearful
-Text Emotions: anger, sadness, joy, fear, disgust, surprise, neutral
-Emotion Detection Models
+No microphone access? Check Windows microphone permissions
 
-The system detects emotions from both voice and text:
-# Test microphone
-arecord -l
+API errors? Make sure .env file has correct API key
 
-sudo apt update
-sudo apt install portaudio19-dev python3-pyaudio
-bash
+Module errors? Run the pip install command again
+
+Still struggling? Contact me
