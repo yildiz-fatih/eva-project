@@ -1,5 +1,9 @@
-Step 1: Get the Code
-bash
+# EVA - Emotion Recognition System
+
+## Complete PC Installation Guide
+
+### Step 1: Get the Code
+```bash
 git clone https://github.com/yildiz-fatih/eva-project.git
 cd eva-project
 Step 2: Install Python Dependencies
